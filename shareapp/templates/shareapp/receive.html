@@ -1,0 +1,198 @@
+{% extends 'shareapp/base.html' %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="transfer-info" data-transfer-key="{{ transfer.key }}">
+                <h2 class="text-center mb-4">
+                    <i class="bi bi-box-seam me-2"></i>
+                    Передача #{{ transfer.key }}
+                </h2>
+                
+                <div id="timer" class="alert alert-info text-center">
+                    <i class="bi bi-clock me-2"></i>
+                    <span class="timer-text"></span>
+                </div>
+                
+                {% if transfer.message %}
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="d-flex align-items-center">
+                            <i class="bi bi-chat-text me-2"></i>Сообщение
+                        </span>
+                        <button class="btn btn-shareit d-flex align-items-center justify-content-center" onclick="copyMessage()">
+                            <i class="bi bi-clipboard me-2"></i>
+                            <span>Копировать</span>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="message-container">
+                            <p class="mb-0" id="message-text">{{ transfer.message }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transfer.files.all %}
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-files me-2"></i>Файлы</span>
+                        <div class="dropdown">
+                            <button class="btn btn-shareit btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-download me-1"></i>Скачать все
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="downloadAllSequential()">
+                                        <i class="bi bi-list-ol me-2"></i>По очереди
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="downloadAsZip()">
+                                        <i class="bi bi-file-zip me-2"></i>Архивом
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <ul class="file-list">
+                            {% for file in transfer.files.all %}
+                            <li class="file-item">
+                                <div class="file-item-info">
+                                    <i class="bi bi-file-earmark"></i>
+                                    <p class="file-item-name">{{ file.filename }}</p>
+                                </div>
+                                <a href="{{ file.file.url }}" class="btn btn-shareit btn-sm" download>
+                                    <i class="bi bi-download me-1"></i>Скачать
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Функция для копирования сообщения
+async function copyMessage() {
+    const messageText = document.getElementById('message-text').textContent;
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    
+    try {
+        await navigator.clipboard.writeText(messageText);
+        button.innerHTML = '<i class="bi bi-check2 me-1"></i>Скопировано';
+    } catch (err) {
+        // Пробуем альтернативный метод копирования
+        const textarea = document.createElement('textarea');
+        textarea.value = messageText;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = 0;
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+            document.execCommand('copy');
+            button.innerHTML = '<i class="bi bi-check2 me-1"></i>Скопировано';
+        } catch (err) {
+            button.innerHTML = '<i class="bi bi-x-circle me-1"></i>Ошибка';
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    }
+    
+    button.disabled = true;
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }, 2000);
+}
+
+// Функция для последовательного скачивания файлов
+function downloadAllSequential() {
+    const links = document.querySelectorAll('.file-item a[download]');
+    const button = event.target.closest('.dropdown').querySelector('.btn');
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Загрузка...';
+    button.disabled = true;
+    
+    let delay = 0;
+    links.forEach((link, index) => {
+        setTimeout(() => {
+            link.click();
+            if (index === links.length - 1) {
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 1000);
+            }
+        }, delay);
+        delay += 500;
+    });
+}
+
+// Функция для скачивания архивом
+function downloadAsZip() {
+    const button = event.target.closest('.dropdown').querySelector('.btn');
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Создание архива...';
+    button.disabled = true;
+
+    // Отправляем запрос на создание архива
+    fetch(`/download-zip/${document.querySelector('[data-transfer-key]').dataset.transferKey}/`)
+        .then(response => {
+            if (response.ok) return response.blob();
+            throw new Error('Ошибка создания архива');
+        })
+        .then(blob => {
+            // Создаем ссылку для скачивания
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'files.zip';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            button.innerHTML = originalText;
+            button.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            button.innerHTML = '<i class="bi bi-x-circle me-1"></i>Ошибка';
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }, 2000);
+        });
+}
+
+// Таймер обратного отсчета
+const expiresAt = new Date('{{ transfer.expires_at|date:"c" }}');
+const timer = document.getElementById('timer');
+const interval = setInterval(() => {
+    const now = new Date();
+    const diff = expiresAt - now;
+    if (diff <= 0) {
+        clearInterval(interval);
+        timer.textContent = 'Передача истекла';
+        return;
+    }
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+    timer.querySelector('.timer-text').textContent = 
+        `Осталось времени: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+}, 1000);
+</script>
+{% endblock %} 

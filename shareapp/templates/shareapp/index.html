@@ -1,0 +1,417 @@
+{% extends 'shareapp/base.html' %}
+
+{% block content %}
+<div class="main-container">
+    <div class="content-wrapper">
+        <div class="action-card">
+            <h1 class="text-center mb-4">Делитесь файлами легко и безопасно</h1>
+            
+            <div class="stats">
+                <div class="stats-item">
+                    <div class="stats-value">{{ total_mb }}</div>
+                    <div class="stats-label">МБ передано</div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-value">{{ total_transfers }}</div>
+                    <div class="stats-label">Всего передач</div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-value">{{ active_transfers }}</div>
+                    <div class="stats-label">Активных</div>
+                </div>
+            </div>
+            
+            <div class="buttons-container">
+                <button class="btn btn-shareit" data-bs-toggle="modal" data-bs-target="#shareModal">
+                    <i class="bi bi-upload"></i>
+                    <span>Поделиться</span>
+                </button>
+                <button class="btn btn-shareit btn-shareit-outline" data-bs-toggle="modal" data-bs-target="#receiveModal">
+                    <i class="bi bi-download"></i>
+                    <span>Получить</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна с тем же выравниванием -->
+<div class="modal fade" id="shareModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-upload me-2"></i>Создать передачу
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="transferForm">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="bi bi-file-earmark me-2"></i>Файлы
+                        </label>
+                        <input type="file" class="form-control" multiple name="files">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="bi bi-chat-text me-2"></i>Сообщение
+                        </label>
+                        <textarea class="form-control" name="message" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-shareit" id="createTransfer">
+                    <i class="bi bi-check2 me-2"></i>Создать
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для получения -->
+<div class="modal fade" id="receiveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-download me-2"></i>Получить передачу
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="receiveForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="bi bi-key me-2"></i>Ключ передачи
+                        </label>
+                        <input type="text" 
+                               class="form-control" 
+                               name="key" 
+                               placeholder="Введите ключ (4-6 символов)"
+                               maxlength="6"
+                               pattern="[A-Z0-9]{4,6}">
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Ключ должен содержать от 4 до 6 символов (только буквы и цифры)
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Заменим секцию QR сканера на более простую -->
+                <div id="qrScannerSection" class="d-none">
+                    <hr>
+                    <div class="text-center mb-3">
+                        <button class="btn btn-shareit" id="startQrScanner">
+                            <i class="bi bi-qr-code-scan me-2"></i>Сфотографировать QR-код
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-shareit" id="receiveTransfer" disabled>
+                    <i class="bi bi-download me-2"></i>Получить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Добавим библиотеку для QR сканирования -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+// Получаем CSRF токен из cookie
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('createTransfer').addEventListener('click', async () => {
+    const form = document.getElementById('transferForm');
+    const formData = new FormData(form);
+    const message = formData.get('message').trim();
+    const files = formData.getAll('files');
+    
+    if (!message && files.length === 0) {
+        alert('Пожалуйста, добавьте файлы или сообщение');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/create/', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const data = await response.json();
+            alert(data.error || 'Произошла ошибка при создании передачи');
+            return;
+        }
+        
+        const data = await response.json();
+        
+        const shareModal = bootstrap.Modal.getInstance(document.getElementById('shareModal'));
+        shareModal.hide();
+        
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.id = 'resultModal';
+        modalDiv.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Передача создана</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <p>Ключ передачи: <strong>${data.key}</strong></p>
+                        <p>Ссылка на получение:</p>
+                        <p><a href="/receive/${data.key}/" target="_blank">${window.location.origin}/receive/${data.key}/</a></p>
+                        <img src="data:image/png;base64,${data.qr_code}" class="img-fluid mb-3" alt="QR код">
+                        <div id="timer" class="alert alert-info"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" onclick="killTransfer('${data.key}')">
+                            Удалить передачу
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalDiv);
+        const resultModal = new bootstrap.Modal(modalDiv);
+        resultModal.show();
+        
+        form.reset();
+        
+        const expiresAt = new Date(data.expires_at);
+        const timer = document.getElementById('timer');
+        const interval = setInterval(() => {
+            const now = new Date();
+            const diff = expiresAt - now;
+            if (diff <= 0) {
+                clearInterval(interval);
+                timer.textContent = 'Передача истекла';
+                return;
+            }
+            const minutes = Math.floor(diff / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            timer.textContent = `Осталось времени: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+        
+        modalDiv.addEventListener('hidden.bs.modal', () => {
+            clearInterval(interval);
+            modalDiv.remove();
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при создании передачи');
+    }
+});
+
+// Добавляем проверку формата ключа
+function isValidKey(key) {
+    // Ключ должен быть от 4 до 6 символов и содержать только буквы и цифры
+    return /^[A-Z0-9]{4,6}$/.test(key);
+}
+
+// Обновляем обработчик формы получения
+document.getElementById('receiveTransfer').addEventListener('click', async () => {
+    const form = document.getElementById('receiveForm');
+    const keyInput = form.elements.key;
+    const key = keyInput.value.trim().toUpperCase();
+    
+    // Проверяем формат ключа
+    if (!isValidKey(key)) {
+        alert('Неверный формат ключа. Ключ должен содержать от 4 до 6 символов (только буквы и цифры)');
+        return;
+    }
+    
+    try {
+        // Проверяем существование передачи
+        const response = await fetch(`/receive/${key}/`);
+        if (response.ok) {
+            window.location.href = `/receive/${key}/`;
+        } else {
+            window.location.href = `/receive/${key}/`; // Редирект все равно произойдет, но покажется страница с ошибкой
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при проверке передачи');
+    }
+});
+
+// Добавляем валидацию при вводе
+document.querySelector('#receiveForm input[name="key"]').addEventListener('input', function(e) {
+    this.value = this.value.toUpperCase(); // Автоматически преобразуем в верхний регистр
+    
+    // Удаляем все символы, кроме букв и цифр
+    this.value = this.value.replace(/[^A-Z0-9]/g, '');
+    
+    // Ограничиваем длину
+    if (this.value.length > 6) {
+        this.value = this.value.slice(0, 6);
+    }
+    
+    // Обновляем состояние кнопки
+    const submitButton = document.getElementById('receiveTransfer');
+    submitButton.disabled = !isValidKey(this.value);
+});
+
+// Инициализируем состояние кнопки при загрузке
+document.addEventListener('DOMContentLoaded', () => {
+    const keyInput = document.querySelector('#receiveForm input[name="key"]');
+    const submitButton = document.getElementById('receiveTransfer');
+    submitButton.disabled = true;
+});
+
+async function killTransfer(key) {
+    if (!confirm('Вы уверены, что хотите удалить эту передачу?')) {
+        return;
+    }
+    
+    try {
+        const csrftoken = getCookie('csrftoken');
+        const response = await fetch(`/kill/${key}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken
+            }
+        });
+        if (response.ok) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('resultModal'));
+            modal.hide();
+            alert('Передача успешно удалена');
+        } else {
+            alert('Ошибка при удалении передачи');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка при удалении передачи');
+    }
+}
+
+// Проверка на мобильное устройство
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Заменим весь код QR сканера на более простой вариант
+document.addEventListener('DOMContentLoaded', function() {
+    const qrScannerSection = document.getElementById('qrScannerSection');
+    
+    if (isMobileDevice()) {
+        qrScannerSection.classList.remove('d-none');
+    }
+    
+    // Добавляем скрытый input для фото
+    const photoInput = document.createElement('input');
+    photoInput.type = 'file';
+    photoInput.accept = 'image/*';
+    photoInput.capture = 'environment';
+    photoInput.style.display = 'none';
+    qrScannerSection.appendChild(photoInput);
+    
+    // Обработчик кнопки сканирования
+    document.getElementById('startQrScanner').addEventListener('click', function() {
+        photoInput.click();
+    });
+    
+    // Обновляем обработчик выбора фото
+    photoInput.addEventListener('change', async function(e) {
+        if (!e.target.files || !e.target.files[0]) return;
+        
+        const file = e.target.files[0];
+        console.log('Selected file:', file);
+        
+        // Проверяем размер файла (не более 10 МБ)
+        if (file.size > 10 * 1024 * 1024) {
+            showAlert('danger', 'Размер файла слишком большой. Максимальный размер: 10 МБ');
+            return;
+        }
+        
+        // Проверяем тип файла
+        if (!file.type.startsWith('image/')) {
+            showAlert('danger', 'Пожалуйста, выберите изображение');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('qr_image', file);
+        
+        try {
+            showAlert('info', 'Обработка QR-кода...');
+            
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            
+            const response = await fetch('/scan-qr/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                },
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Ошибка при сканировании QR-кода');
+            }
+            
+            if (data.key) {
+                const keyInput = document.querySelector('#receiveForm input[name="key"]');
+                keyInput.value = data.key;
+                document.getElementById('receiveTransfer').disabled = false;
+                
+                showAlert('success', 'QR-код успешно отсканирован!');
+                
+                setTimeout(() => {
+                    document.getElementById('receiveTransfer').click();
+                }, 1000);
+            }
+            
+        } catch (error) {
+            console.error('Error:', error);
+            showAlert('danger', error.message);
+        }
+        
+        e.target.value = '';
+    });
+});
+
+// Функция для показа уведомлений
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const modalBody = document.querySelector('.modal-body');
+    modalBody.insertBefore(alertDiv, modalBody.firstChild);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+</script>
+{% endblock %} 
