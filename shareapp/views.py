@@ -7,6 +7,7 @@ from .models import Transfer, TransferFile, Statistics
 from datetime import datetime
 import json
 import base64
+import qrcode
 from io import BytesIO
 import zipfile
 import os
