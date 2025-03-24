@@ -6,7 +6,6 @@ from django.conf import settings
 from .models import Transfer, TransferFile, Statistics
 from datetime import datetime
 import json
-import qrcode
 import base64
 from io import BytesIO
 import zipfile
@@ -17,7 +16,6 @@ import shutil
 from django.db import models
 import cv2
 import numpy as np
-from pyzbar.pyzbar import decode
 from django.views.decorators.http import require_http_methods
 import re
 
