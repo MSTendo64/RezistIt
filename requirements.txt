@@ -1,6 +1,6 @@
-﻿asgiref==3.8.1
+asgiref==3.8.1
 colorama==0.4.6
-Django==5.1.7
+Django==5.2.16
 numpy==2.2.4
 opencv-python==4.11.0.86
 qrcode==8.0
